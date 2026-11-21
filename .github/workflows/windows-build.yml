@@ -48,14 +48,11 @@ jobs:
           Get-ChildItem -Path $src -Recurse -Filter *.ui | ForEach-Object {
             $className = $_.BaseName
             [xml]$ui = Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8
-            $ui.ui.class = $className
-            $settings = New-Object System.Xml.XmlWriterSettings
-            $settings.Encoding = New-Object System.Text.UTF8Encoding($false)
-            $settings.Indent = $true
-            $writer = [System.Xml.XmlWriter]::Create($_.FullName, $settings)
-            $ui.Save($writer)
-            $writer.Close()
-            Write-Host "Restored UI class: $($_.Name) => $className"
+            $classNode = $ui.SelectSingleNode('/ui/class')
+            if ($null -eq $classNode) { throw "Missing /ui/class in $($_.FullName)" }
+            $classNode.InnerText = $className
+            $ui.Save($_.FullName)
+            Write-Host "Restored UI class: $($_.Name) => $className (now $($classNode.InnerText))"
           }
           "SOURCE_DIR=$src" >> $env:GITHUB_ENV
 
