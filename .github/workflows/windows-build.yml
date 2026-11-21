@@ -127,18 +127,42 @@ jobs:
       - name: Package portable folder (up to 3 attempts)
         shell: msys2 {0}
         run: |
-          set -o pipefail
+          set -euo pipefail
           for attempt in 1 2 3; do
             echo "Package attempt ${attempt}/3"
             rm -rf package melonDS-korean-windows-x64.zip
             mkdir -p package
-            if cp build/melonDS.exe package/ && \
-               windeployqt6 --release --compiler-runtime --dir package package/melonDS.exe && \
-               cp /ucrt64/bin/SDL2.dll /ucrt64/bin/libarchive-*.dll /ucrt64/bin/libenet-*.dll /ucrt64/bin/libzstd*.dll /ucrt64/bin/libfaad*.dll package/ 2>/dev/null || true; then
-              python -c "import shutil; shutil.make_archive('melonDS-korean-windows-x64', 'zip', 'package')" && \
-              test -s melonDS-korean-windows-x64.zip && exit 0
+            if ! cp build/melonDS.exe package/; then
+              echo "Missing build/melonDS.exe"
+              continue
             fi
-            echo "Package attempt ${attempt} failed. Retrying when attempts remain."
+            if ! windeployqt6 --release --compiler-runtime --dir package package/melonDS.exe; then
+              echo "windeployqt6 failed"
+              continue
+            fi
+
+            # Explicitly bundle MinGW/UCRT runtime and libb2 dependencies.
+            for dll in libgcc_s_seh-1.dll libwinpthread-1.dll libstdc++-6.dll libb2-1.dll; do
+              if [ ! -f "/ucrt64/bin/${dll}" ]; then
+                echo "Required runtime DLL not found: /ucrt64/bin/${dll}"
+                exit 1
+              fi
+              cp "/ucrt64/bin/${dll}" package/
+            done
+
+            # Bundle non-Qt runtime dependencies used by melonDS.
+            for pattern in 'SDL2.dll' 'libarchive-*.dll' 'libenet-*.dll' 'libzstd*.dll' 'libfaad*.dll'; do
+              compgen -G "/ucrt64/bin/${pattern}" > /dev/null || continue
+              cp /ucrt64/bin/${pattern} package/
+            done
+
+            python -c "import shutil; shutil.make_archive('melonDS-korean-windows-x64', 'zip', 'package')"
+            test -s melonDS-korean-windows-x64.zip
+            for dll in libgcc_s_seh-1.dll libwinpthread-1.dll libstdc++-6.dll libb2-1.dll; do
+              test -f "package/${dll}"
+            done
+            echo "Package verified on attempt ${attempt}"
+            exit 0
           done
           echo "Packaging failed after 3 attempts."
           exit 1
