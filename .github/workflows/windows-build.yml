@@ -43,9 +43,34 @@ jobs:
           if (!(Test-Path (Join-Path $src "CMakeLists.txt"))) {
             throw "The ZIP does not contain melonDS-korean/CMakeLists.txt."
           }
-          # Restore Qt Designer form class identifiers using Python's XML parser,
-          # then verify the actual on-disk file before CMake/Qt UIC reads it.
-          python -c "import pathlib,xml.etree.ElementTree as ET; root=pathlib.Path(r'$src'); files=list(root.rglob('*.ui')); [(lambda p,t,c: (setattr(c,'text',p.stem), t.write(p,encoding='utf-8',xml_declaration=True), print(f'Restored and saved UI class: {p.name} => {ET.parse(p).getroot().findtext("class")}')) if c is not None else (_ for _ in ()).throw(RuntimeError(f'Missing /ui/class in {p}')))(p,ET.parse(p),ET.parse(p).getroot().find('class')) for p in files]"
+          # Restore Qt Designer form class identifiers with a standalone Python script.
+          $repairScript = @'
+          import pathlib
+          import xml.etree.ElementTree as ET
+
+          root = pathlib.Path(r"""$src""")
+          ui_files = list(root.rglob("*.ui"))
+          if not ui_files:
+              raise RuntimeError("No Qt Designer .ui files found")
+
+          for path in ui_files:
+              tree = ET.parse(path)
+              class_node = tree.getroot().find("class")
+              if class_node is None:
+                  raise RuntimeError(f"Missing /ui/class in {path}")
+              class_node.text = path.stem
+              tree.write(path, encoding="utf-8", xml_declaration=True)
+              saved_name = ET.parse(path).getroot().findtext("class")
+              if saved_name != path.stem:
+                  raise RuntimeError(f"Failed to restore class name in {path}: {saved_name!r}")
+              print(f"Restored UI class: {path.name} => {saved_name}")
+
+          print(f"Verified {len(ui_files)} Qt Designer UI files.")
+          '@
+          $repairPath = Join-Path $env:RUNNER_TEMP "repair_ui_classes.py"
+          Set-Content -LiteralPath $repairPath -Value $repairScript -Encoding UTF8
+          python $repairPath
+          if ($LASTEXITCODE -ne 0) { throw "UI class repair script failed." }
           $audioUi = Join-Path $src "src/frontend/qt_sdl/AudioSettingsDialog.ui"
           [xml]$audioCheck = Get-Content -LiteralPath $audioUi -Raw -Encoding UTF8
           if ($audioCheck.SelectSingleNode('/ui/class').InnerText -ne 'AudioSettingsDialog') {
