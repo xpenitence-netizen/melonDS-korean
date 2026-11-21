@@ -72,8 +72,9 @@ jobs:
               for translated, original in zip(translated_nodes, original_nodes):
                   if translated.tag != original.tag:
                       raise RuntimeError(f"UI element order differs from upstream: {relative}")
-                  if "class" in original.attrib:
-                      translated.set("class", original.attrib["class"])
+                  for attribute in ("class", "name"):
+                      if attribute in original.attrib:
+                          translated.set(attribute, original.attrib[attribute])
               class_node = tree.getroot().find("class")
               if class_node is None:
                   raise RuntimeError(f"Missing /ui/class in {path}")
