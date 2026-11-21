@@ -46,9 +46,10 @@ jobs:
           # Restore Qt Designer form class identifiers with a standalone Python script.
           $repairScript = @'
           import pathlib
+          import sys
           import xml.etree.ElementTree as ET
 
-          root = pathlib.Path(r"""$src""")
+          root = pathlib.Path(sys.argv[1])
           ui_files = list(root.rglob("*.ui"))
           if not ui_files:
               raise RuntimeError("No Qt Designer .ui files found")
@@ -69,7 +70,7 @@ jobs:
           '@
           $repairPath = Join-Path $env:RUNNER_TEMP "repair_ui_classes.py"
           Set-Content -LiteralPath $repairPath -Value $repairScript -Encoding UTF8
-          python $repairPath
+          python $repairPath $src
           if ($LASTEXITCODE -ne 0) { throw "UI class repair script failed." }
           $audioUi = Join-Path $src "src/frontend/qt_sdl/AudioSettingsDialog.ui"
           [xml]$audioCheck = Get-Content -LiteralPath $audioUi -Raw -Encoding UTF8
