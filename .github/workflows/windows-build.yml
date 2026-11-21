@@ -48,7 +48,7 @@ jobs:
           Get-ChildItem -Path $src -Recurse -Filter *.ui | ForEach-Object {
             $content = Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8
             $className = $_.BaseName
-            $content = [regex]::Replace($content, '<class>.*?</class>', "<class>$className</class>", 1)
+            $content = [regex]::Replace($content, '(?s)<class>.*?</class>', "<class>$className</class>", 1)
             Set-Content -LiteralPath $_.FullName -Value $content -Encoding UTF8 -NoNewline
           }
           "SOURCE_DIR=$src" >> $env:GITHUB_ENV
