@@ -120,7 +120,7 @@ jobs:
           cp build/melonDS.exe package/
           windeployqt6 --release --compiler-runtime --dir package package/melonDS.exe
           cp /ucrt64/bin/SDL2.dll /ucrt64/bin/libarchive-*.dll /ucrt64/bin/libenet-*.dll /ucrt64/bin/libzstd*.dll /ucrt64/bin/libfaad*.dll package/ 2>/dev/null || true
-          7z a melonDS-korean-windows-x64.zip ./package/*
+          python -c "import shutil; shutil.make_archive('melonDS-korean-windows-x64', 'zip', 'package')"
 
       - name: Upload EXE package
         uses: actions/upload-artifact@v4
