@@ -156,6 +156,36 @@ jobs:
               cp /ucrt64/bin/${pattern} package/
             done
 
+            # Recursively collect every MSYS2 runtime dependency of the EXE,
+            # Qt DLLs, plugins, and already bundled third-party DLLs.
+            for pass in 1 2 3 4 5 6 7 8 9 10; do
+              added=0
+              for binary in package/*.exe package/*.dll; do
+                [ -f "$binary" ] || continue
+                while IFS= read -r dep; do
+                  [ -f "$dep" ] || continue
+                  name="$(basename "$dep")"
+                  if [ ! -f "package/$name" ]; then
+                    cp "$dep" package/
+                    echo "Bundled transitive dependency: $name"
+                    added=1
+                  fi
+                done < <(ldd "$binary" 2>/dev/null | awk '/=> \/ucrt64\/bin\// {print $3} /^\/ucrt64\/bin\// {print $1}')
+              done
+              [ "$added" -eq 1 ] || break
+            done
+
+            # Fail if any dependency belonging to the MSYS2 runtime remains unresolved.
+            unresolved=0
+            for binary in package/*.exe package/*.dll; do
+              [ -f "$binary" ] || continue
+              if ldd "$binary" 2>/dev/null | grep -E 'not found|ucrt64.*not found'; then
+                echo "Unresolved dependency in $binary"
+                unresolved=1
+              fi
+            done
+            [ "$unresolved" -eq 0 ] || { echo "Unresolved runtime dependencies remain"; exit 1; }
+
             python -c "import shutil; shutil.make_archive('melonDS-korean-windows-x64', 'zip', 'package')"
             test -s melonDS-korean-windows-x64.zip
             for dll in libgcc_s_seh-1.dll libwinpthread-1.dll libstdc++-6.dll libb2-1.dll; do
