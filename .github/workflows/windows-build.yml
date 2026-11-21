@@ -109,18 +109,47 @@ jobs:
         shell: msys2 {0}
         run: cmake -S "$SOURCE_DIR" -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
-      - name: Build
-        shell: msys2 {0}
-        run: cmake --build build --parallel
-
-      - name: Package portable folder
+      - name: Build (up to 3 attempts)
         shell: msys2 {0}
         run: |
-          mkdir -p package
-          cp build/melonDS.exe package/
-          windeployqt6 --release --compiler-runtime --dir package package/melonDS.exe
-          cp /ucrt64/bin/SDL2.dll /ucrt64/bin/libarchive-*.dll /ucrt64/bin/libenet-*.dll /ucrt64/bin/libzstd*.dll /ucrt64/bin/libfaad*.dll package/ 2>/dev/null || true
-          python -c "import shutil; shutil.make_archive('melonDS-korean-windows-x64', 'zip', 'package')"
+          set -o pipefail
+          for attempt in 1 2 3; do
+            echo "Build attempt ${attempt}/3"
+            if cmake --build build --parallel 2>&1 | tee "build-attempt-${attempt}.log"; then
+              echo "Build succeeded on attempt ${attempt}"
+              exit 0
+            fi
+            echo "Build attempt ${attempt} failed. Retrying when attempts remain."
+          done
+          echo "Build failed after 3 attempts. See uploaded diagnostic logs."
+          exit 1
+
+      - name: Package portable folder (up to 3 attempts)
+        shell: msys2 {0}
+        run: |
+          set -o pipefail
+          for attempt in 1 2 3; do
+            echo "Package attempt ${attempt}/3"
+            rm -rf package melonDS-korean-windows-x64.zip
+            mkdir -p package
+            if cp build/melonDS.exe package/ && \
+               windeployqt6 --release --compiler-runtime --dir package package/melonDS.exe && \
+               cp /ucrt64/bin/SDL2.dll /ucrt64/bin/libarchive-*.dll /ucrt64/bin/libenet-*.dll /ucrt64/bin/libzstd*.dll /ucrt64/bin/libfaad*.dll package/ 2>/dev/null || true; then
+              python -c "import shutil; shutil.make_archive('melonDS-korean-windows-x64', 'zip', 'package')" && \
+              test -s melonDS-korean-windows-x64.zip && exit 0
+            fi
+            echo "Package attempt ${attempt} failed. Retrying when attempts remain."
+          done
+          echo "Packaging failed after 3 attempts."
+          exit 1
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: melonDS-build-diagnostics
+          path: build-attempt-*.log
+          if-no-files-found: ignore
 
       - name: Upload EXE package
         uses: actions/upload-artifact@v4
