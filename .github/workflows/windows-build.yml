@@ -43,34 +43,52 @@ jobs:
           if (!(Test-Path (Join-Path $src "CMakeLists.txt"))) {
             throw "The ZIP does not contain melonDS-korean/CMakeLists.txt."
           }
-          # Restore Qt Designer form class identifiers with a standalone Python script.
+          # Compare every translated form with upstream and restore all Qt class identifiers.
+          git clone --depth 1 https://github.com/melonDS-emu/melonDS.git upstream
+          if ($LASTEXITCODE -ne 0) { throw "Could not fetch upstream melonDS UI definitions." }
+          $upstream = Join-Path $PWD "upstream"
           $repairScript = @'
           import pathlib
           import sys
           import xml.etree.ElementTree as ET
 
           root = pathlib.Path(sys.argv[1])
+          upstream = pathlib.Path(sys.argv[2])
           ui_files = list(root.rglob("*.ui"))
           if not ui_files:
               raise RuntimeError("No Qt Designer .ui files found")
 
           for path in ui_files:
+              relative = path.relative_to(root)
+              original_path = upstream / relative
+              if not original_path.exists():
+                  raise RuntimeError(f"Missing upstream reference UI: {relative}")
               tree = ET.parse(path)
+              original_tree = ET.parse(original_path)
+              translated_nodes = list(tree.getroot().iter())
+              original_nodes = list(original_tree.getroot().iter())
+              if len(translated_nodes) != len(original_nodes):
+                  raise RuntimeError(f"UI structure differs from upstream: {relative}")
+              for translated, original in zip(translated_nodes, original_nodes):
+                  if translated.tag != original.tag:
+                      raise RuntimeError(f"UI element order differs from upstream: {relative}")
+                  if "class" in original.attrib:
+                      translated.set("class", original.attrib["class"])
               class_node = tree.getroot().find("class")
               if class_node is None:
                   raise RuntimeError(f"Missing /ui/class in {path}")
               class_node.text = path.stem
               tree.write(path, encoding="utf-8", xml_declaration=True)
-              saved_name = ET.parse(path).getroot().findtext("class")
-              if saved_name != path.stem:
-                  raise RuntimeError(f"Failed to restore class name in {path}: {saved_name!r}")
-              print(f"Restored UI class: {path.name} => {saved_name}")
+              check = ET.parse(path).getroot()
+              if check.findtext("class") != path.stem:
+                  raise RuntimeError(f"Failed to restore form class in {path}")
+              print(f"Restored Qt class identifiers: {relative}")
 
-          print(f"Verified {len(ui_files)} Qt Designer UI files.")
+          print(f"Verified {len(ui_files)} Qt Designer UI files against upstream.")
           '@
           $repairPath = Join-Path $env:RUNNER_TEMP "repair_ui_classes.py"
           Set-Content -LiteralPath $repairPath -Value $repairScript -Encoding UTF8
-          python $repairPath $src
+          python $repairPath $src $upstream
           if ($LASTEXITCODE -ne 0) { throw "UI class repair script failed." }
           $audioUi = Join-Path $src "src/frontend/qt_sdl/AudioSettingsDialog.ui"
           [xml]$audioCheck = Get-Content -LiteralPath $audioUi -Raw -Encoding UTF8
