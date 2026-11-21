@@ -75,6 +75,12 @@ jobs:
                   for attribute in ("class", "name"):
                       if attribute in original.attrib:
                           translated.set(attribute, original.attrib[attribute])
+                  # Only Qt <string> elements contain user-facing text.
+                  # Restore every other XML text node (enum/set/tabstop/etc.)
+                  # because translating these corrupts generated C++ identifiers.
+                  if translated.tag != "string":
+                      translated.text = original.text
+                      translated.tail = original.tail
               class_node = tree.getroot().find("class")
               if class_node is None:
                   raise RuntimeError(f"Missing /ui/class in {path}")
