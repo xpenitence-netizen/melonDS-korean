@@ -43,17 +43,15 @@ jobs:
           if (!(Test-Path (Join-Path $src "CMakeLists.txt"))) {
             throw "The ZIP does not contain melonDS-korean/CMakeLists.txt."
           }
-          # Restore Qt Designer form class identifiers. These are Qt identifiers,
-          # not user-facing labels, and must remain valid ASCII names.
-          Get-ChildItem -Path $src -Recurse -Filter *.ui | ForEach-Object {
-            $className = $_.BaseName
-            [xml]$ui = Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8
-            $classNode = $ui.SelectSingleNode('/ui/class')
-            if ($null -eq $classNode) { throw "Missing /ui/class in $($_.FullName)" }
-            $classNode.InnerText = $className
-            $ui.Save($_.FullName)
-            Write-Host "Restored UI class: $($_.Name) => $className (now $($classNode.InnerText))"
+          # Restore Qt Designer form class identifiers using Python's XML parser,
+          # then verify the actual on-disk file before CMake/Qt UIC reads it.
+          python -c "import pathlib,xml.etree.ElementTree as ET; root=pathlib.Path(r'$src'); files=list(root.rglob('*.ui')); [(lambda p,t,c: (setattr(c,'text',p.stem), t.write(p,encoding='utf-8',xml_declaration=True), print(f'Restored and saved UI class: {p.name} => {ET.parse(p).getroot().findtext("class")}')) if c is not None else (_ for _ in ()).throw(RuntimeError(f'Missing /ui/class in {p}')))(p,ET.parse(p),ET.parse(p).getroot().find('class')) for p in files]"
+          $audioUi = Join-Path $src "src/frontend/qt_sdl/AudioSettingsDialog.ui"
+          [xml]$audioCheck = Get-Content -LiteralPath $audioUi -Raw -Encoding UTF8
+          if ($audioCheck.SelectSingleNode('/ui/class').InnerText -ne 'AudioSettingsDialog') {
+            throw "AudioSettingsDialog.ui class identifier was not repaired on disk."
           }
+          Write-Host "Verified on disk: $($audioCheck.SelectSingleNode('/ui/class').InnerText)"
           "SOURCE_DIR=$src" >> $env:GITHUB_ENV
 
       - name: Configure
