@@ -1,0 +1,70 @@
+name: Windows x64 build
+
+on:
+  push:
+    paths:
+      - 'melonDS-korean-source.zip'
+      - '.github/workflows/windows-build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            mingw-w64-ucrt-x86_64-toolchain
+            mingw-w64-ucrt-x86_64-cmake
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-SDL2
+            mingw-w64-ucrt-x86_64-libarchive
+            mingw-w64-ucrt-x86_64-enet
+            mingw-w64-ucrt-x86_64-zstd
+            mingw-w64-ucrt-x86_64-faad2
+            mingw-w64-ucrt-x86_64-qt6-base
+            mingw-w64-ucrt-x86_64-qt6-svg
+            mingw-w64-ucrt-x86_64-qt6-multimedia
+
+      - name: Extract Korean source
+        shell: pwsh
+        run: |
+          if (!(Test-Path "melonDS-korean-source.zip")) {
+            throw "Upload melonDS-korean-source.zip to the repository root first."
+          }
+          Expand-Archive -Path "melonDS-korean-source.zip" -DestinationPath "source" -Force
+          $src = Join-Path $PWD "source/melonDS-korean"
+          if (!(Test-Path (Join-Path $src "CMakeLists.txt"))) {
+            throw "The ZIP does not contain melonDS-korean/CMakeLists.txt."
+          }
+          "SOURCE_DIR=$src" >> $env:GITHUB_ENV
+
+      - name: Configure
+        shell: msys2 {0}
+        run: cmake -S "$SOURCE_DIR" -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        shell: msys2 {0}
+        run: cmake --build build --parallel
+
+      - name: Package portable folder
+        shell: msys2 {0}
+        run: |
+          mkdir -p package
+          cp build/melonDS.exe package/
+          windeployqt6 --release --compiler-runtime --dir package package/melonDS.exe
+          cp /ucrt64/bin/SDL2.dll /ucrt64/bin/libarchive-*.dll /ucrt64/bin/libenet-*.dll /ucrt64/bin/libzstd*.dll /ucrt64/bin/libfaad*.dll package/ 2>/dev/null || true
+          7z a melonDS-korean-windows-x64.zip ./package/*
+
+      - name: Upload EXE package
+        uses: actions/upload-artifact@v4
+        with:
+          name: melonDS-korean-windows-x64
+          path: melonDS-korean-windows-x64.zip
+          if-no-files-found: error
