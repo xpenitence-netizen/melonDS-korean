@@ -46,10 +46,16 @@ jobs:
           # Restore Qt Designer form class identifiers. These are Qt identifiers,
           # not user-facing labels, and must remain valid ASCII names.
           Get-ChildItem -Path $src -Recurse -Filter *.ui | ForEach-Object {
-            $content = Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8
             $className = $_.BaseName
-            $content = [regex]::Replace($content, '(?s)<class>.*?</class>', "<class>$className</class>", 1)
-            Set-Content -LiteralPath $_.FullName -Value $content -Encoding UTF8 -NoNewline
+            [xml]$ui = Get-Content -LiteralPath $_.FullName -Raw -Encoding UTF8
+            $ui.ui.class = $className
+            $settings = New-Object System.Xml.XmlWriterSettings
+            $settings.Encoding = New-Object System.Text.UTF8Encoding($false)
+            $settings.Indent = $true
+            $writer = [System.Xml.XmlWriter]::Create($_.FullName, $settings)
+            $ui.Save($writer)
+            $writer.Close()
+            Write-Host "Restored UI class: $($_.Name) => $className"
           }
           "SOURCE_DIR=$src" >> $env:GITHUB_ENV
 
